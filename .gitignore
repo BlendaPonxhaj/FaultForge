@@ -1,0 +1,21 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+.env
+.env.*
+!.env.example
+
+# React / Node.js
+node_modules/
+frontend/dist/
+
+# Datasets and generated experiments
+experiments/data/
+experiments/generated_tests/
+experiments/results/
+
+# IDE / OS
+.vscode/
+.DS_Store
+Thumbs.db
