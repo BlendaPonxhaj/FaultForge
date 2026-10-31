@@ -201,3 +201,51 @@ export function getDinov2HeatmapUrl(sampleId: string): string {
   return "/api/faultforge/dinov2/heatmap/" +
     sampleId.split("/").map(encodeURIComponent).join("/");
 }
+
+export interface RedAgentResult {
+  sample_id: string;
+  model: string;
+  threshold: number;
+  original_prediction: boolean;
+  actual_defect: boolean | null;
+  tests: {
+    condition: string;
+    anomaly_score: number;
+    predicted_defect: boolean;
+    prediction_flip: boolean;
+    correct: boolean | null;
+  }[];
+  total_tests: number;
+  prediction_flips: number;
+  incorrect_predictions: number;
+  worst_conditions: string[];
+  evaluation_type: string;
+  independent_validation: boolean;
+}
+
+export async function runRedAgent(
+  sampleId: string
+): Promise<RedAgentResult> {
+  const response = await fetch(
+    "/api/faultforge/red-agent/discover",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        sample_id: sampleId,
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => null);
+
+    throw new Error(
+      error?.detail ?? `Red Agent failed: HTTP ${response.status}`
+    );
+  }
+
+  return response.json() as Promise<RedAgentResult>;
+}
