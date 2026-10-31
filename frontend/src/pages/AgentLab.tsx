@@ -17,6 +17,7 @@ import {
   getDinov2Cases,
   runRedAgent,
   runBlueAgent,
+  getDinov2Verification,
   getInspectionImageUrl,
 } from "../services/api";
 
@@ -25,6 +26,7 @@ import type {
   Dinov2Case,
   RedAgentResult,
   BlueAgentResult,
+  Dinov2VerificationResult,
 } from "../services/api";
 
 interface Props {
@@ -39,7 +41,15 @@ const labels: Record<string, string> = {
   high_contrast: "High Contrast",
 };
 
-export default function AgentLab({ report }: Props) {
+function formatPercentage(value: number): string {
+  return `${(value * 100).toFixed(2)}%`;
+}
+
+function formatCheckName(name: string): string {
+  return name.replaceAll("_", " ");
+}
+
+export default function AgentLab(_props: Props) {
   const [cases, setCases] = useState<Dinov2Case[]>([]);
   const [sampleId, setSampleId] = useState("");
 
@@ -49,12 +59,21 @@ export default function AgentLab({ report }: Props) {
   const [blueResult, setBlueResult] =
     useState<BlueAgentResult | null>(null);
 
+  const [verification, setVerification] =
+    useState<Dinov2VerificationResult | null>(null);
+
   const [loadingCases, setLoadingCases] = useState(true);
   const [runningRed, setRunningRed] = useState(false);
   const [runningBlue, setRunningBlue] = useState(false);
 
-  const [error, setError] = useState("");
+  const [verificationLoading, setVerificationLoading] =
+    useState(true);
 
+  const [error, setError] = useState("");
+  const [verificationError, setVerificationError] =
+    useState("");
+
+  // Load DINOv2 inspection cases.
   useEffect(() => {
     let active = true;
 
@@ -71,19 +90,51 @@ export default function AgentLab({ report }: Props) {
 
         setSampleId(
           preferred?.sample_id ??
-          data.cases[0]?.sample_id ??
-          ""
+            data.cases[0]?.sample_id ??
+            ""
         );
       })
       .catch((err) => {
         if (active) {
           setError(
-            err instanceof Error ? err.message : String(err)
+            err instanceof Error
+              ? err.message
+              : String(err)
           );
         }
       })
       .finally(() => {
         if (active) setLoadingCases(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  // Load the saved DINOv2 Verification Gate report.
+  useEffect(() => {
+    let active = true;
+
+    getDinov2Verification()
+      .then((data) => {
+        if (active) {
+          setVerification(data);
+        }
+      })
+      .catch((err) => {
+        if (active) {
+          setVerificationError(
+            err instanceof Error
+              ? err.message
+              : String(err)
+          );
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setVerificationLoading(false);
+        }
       });
 
     return () => {
@@ -106,11 +157,13 @@ export default function AgentLab({ report }: Props) {
     setRedResult(null);
 
     try {
-      const response = await runRedAgent(sampleId);
-      setRedResult(response);
+      const data = await runRedAgent(sampleId);
+      setRedResult(data);
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : String(err)
+        err instanceof Error
+          ? err.message
+          : String(err)
       );
     } finally {
       setRunningRed(false);
@@ -125,11 +178,13 @@ export default function AgentLab({ report }: Props) {
     setBlueResult(null);
 
     try {
-      const response = await runBlueAgent(sampleId);
-      setBlueResult(response);
+      const data = await runBlueAgent(sampleId);
+      setBlueResult(data);
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : String(err)
+        err instanceof Error
+          ? err.message
+          : String(err)
       );
     } finally {
       setRunningBlue(false);
@@ -137,6 +192,9 @@ export default function AgentLab({ report }: Props) {
   }
 
   const isRunning = runningRed || runningBlue;
+
+  const verificationFailed =
+    verification?.decision.includes("REJECT") ?? false;
 
   return (
     <div className="space-y-7">
@@ -151,9 +209,9 @@ export default function AgentLab({ report }: Props) {
         </h1>
 
         <p className="mt-2 text-sm text-slate-400">
-          Discover model weaknesses and evaluate
-          experimental defense strategies using real
-          Meta DINOv2 inference.
+          Discover model weaknesses, evaluate experimental
+          defense strategies, and verify their performance
+          using Meta DINOv2.
         </p>
       </div>
 
@@ -172,7 +230,7 @@ export default function AgentLab({ report }: Props) {
 
           <p className="mt-2 text-xs leading-5 text-slate-400">
             Executes controlled visual perturbations
-            against Meta DINOv2 and discovers incorrect
+            against Meta DINOv2. Discovers incorrect
             predictions and prediction flips.
           </p>
 
@@ -193,9 +251,8 @@ export default function AgentLab({ report }: Props) {
           </h3>
 
           <p className="mt-2 text-xs leading-5 text-slate-400">
-            Evaluates an experimental multi-view
-            majority-voting strategy using five
-            DINOv2 predictions.
+            Tests an experimental multi-view majority-vote
+            strategy using five DINOv2 predictions.
           </p>
 
           <span className="mt-4 inline-block rounded-lg bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-300">
@@ -207,7 +264,11 @@ export default function AgentLab({ report }: Props) {
         <div className="rounded-2xl border border-slate-800 bg-[#131c2c] p-5">
           <ShieldCheck
             size={23}
-            className="text-emerald-400"
+            className={
+              verificationFailed
+                ? "text-rose-400"
+                : "text-emerald-400"
+            }
           />
 
           <h3 className="mt-3 font-semibold text-white">
@@ -215,19 +276,28 @@ export default function AgentLab({ report }: Props) {
           </h3>
 
           <p className="mt-2 text-xs leading-5 text-slate-400">
-            Historical verification decision:{" "}
-            {report.verification.decision}.
-            Independent DINOv2 strategy validation
-            is not yet implemented.
+            Compares DINOv2 baseline predictions against
+            Blue Agent consensus across the evaluation
+            dataset.
           </p>
 
-          <span className="mt-4 inline-block rounded-lg bg-slate-700/50 px-3 py-1 text-xs text-slate-400">
-            Pending validation
+          <span
+            className={`mt-4 inline-block rounded-lg px-3 py-1 text-xs font-semibold ${
+              verificationFailed
+                ? "bg-rose-500/10 text-rose-300"
+                : "bg-slate-700/50 text-slate-300"
+            }`}
+          >
+            {verificationLoading
+              ? "Loading..."
+              : verification
+                ? formatCheckName(verification.decision)
+                : "Report unavailable"}
           </span>
         </div>
       </div>
 
-      {/* EXECUTION PANEL */}
+      {/* AGENT EXECUTION PANEL */}
       <section className="rounded-2xl border border-slate-800 bg-[#131c2c] p-6">
         <div className="flex items-center gap-3">
           <Activity
@@ -241,9 +311,9 @@ export default function AgentLab({ report }: Props) {
         </div>
 
         <p className="mt-2 text-sm text-slate-400">
-          Select an inspection image and run Red Agent
-          to discover model weaknesses, or Blue Agent
-          to evaluate a multi-view consensus strategy.
+          Select an inspection image to discover DINOv2
+          failure conditions or evaluate the experimental
+          Blue Agent strategy.
         </p>
 
         {/* SAMPLE SELECTOR */}
@@ -333,21 +403,19 @@ export default function AgentLab({ report }: Props) {
         </div>
 
         <p className="mt-4 text-xs leading-5 text-slate-500">
-          Both agents use real Meta DINOv2 inference
-          running locally on CPU. Red Agent generates
-          deterministic visual transformations. Blue
-          Agent evaluates an experimental decision rule.
-          Neither constitutes independent validation.
+          Both agents use Meta DINOv2 running locally on
+          CPU. Red Agent applies deterministic visual
+          transformations. Blue Agent evaluates a
+          rule-based majority-vote strategy.
         </p>
 
-        {/* ERROR MESSAGE */}
+        {/* ERROR */}
         {error && (
           <div className="mt-5 flex items-start gap-3 rounded-xl border border-rose-500/20 bg-rose-500/10 p-4 text-sm text-rose-300">
             <AlertTriangle
               size={18}
               className="shrink-0"
             />
-
             <span>{error}</span>
           </div>
         )}
@@ -445,8 +513,8 @@ export default function AgentLab({ report }: Props) {
                   {redResult.actual_defect === null
                     ? "Unknown"
                     : redResult.actual_defect
-                    ? "Defect"
-                    : "Normal"}
+                      ? "Defect"
+                      : "Normal"}
                 </strong>
               </p>
 
@@ -479,19 +547,15 @@ export default function AgentLab({ report }: Props) {
                   <th className="py-4 font-medium">
                     Condition
                   </th>
-
                   <th className="py-4 font-medium">
                     Anomaly Score
                   </th>
-
                   <th className="py-4 font-medium">
                     Prediction
                   </th>
-
                   <th className="py-4 font-medium">
                     Flip?
                   </th>
-
                   <th className="py-4 font-medium">
                     Correct?
                   </th>
@@ -563,11 +627,11 @@ export default function AgentLab({ report }: Props) {
           </div>
 
           <div className="rounded-xl border border-rose-500/20 bg-rose-500/5 p-4 text-xs leading-6 text-slate-400">
-            Red Agent uses real Meta DINOv2 inference
+            Red Agent performs real Meta DINOv2 inference
             with deterministic perturbations. Prediction
-            flips demonstrate model sensitivity, not
-            necessarily adversarial attacks.
-            Independent validation is not yet complete.
+            flips reveal sensitivity to transformations,
+            not necessarily adversarial attacks.
+            Independent validation is not complete.
           </div>
         </section>
       )}
@@ -636,7 +700,7 @@ export default function AgentLab({ report }: Props) {
             </div>
           </div>
 
-          {/* DECISION COMPARISON */}
+          {/* BLUE DECISION COMPARISON */}
           <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-5">
             <h3 className="font-semibold text-white">
               Strategy Comparison
@@ -647,7 +711,6 @@ export default function AgentLab({ report }: Props) {
                 <p className="text-xs text-slate-400">
                   Decision Changed
                 </p>
-
                 <p className="mt-2 font-semibold text-white">
                   {blueResult.changed_decision
                     ? "Yes"
@@ -659,11 +722,9 @@ export default function AgentLab({ report }: Props) {
                 <p className="text-xs text-slate-400">
                   Comparison
                 </p>
-
                 <p className="mt-2 font-semibold text-indigo-300">
-                  {blueResult.comparison.replaceAll(
-                    "_",
-                    " "
+                  {formatCheckName(
+                    blueResult.comparison
                   )}
                 </p>
               </div>
@@ -672,13 +733,12 @@ export default function AgentLab({ report }: Props) {
                 <p className="text-xs text-slate-400">
                   Ground Truth
                 </p>
-
                 <p className="mt-2 font-semibold text-white">
                   {blueResult.actual_defect === null
                     ? "Unknown"
                     : blueResult.actual_defect
-                    ? "Defect"
-                    : "Normal"}
+                      ? "Defect"
+                      : "Normal"}
                 </p>
               </div>
 
@@ -686,17 +746,16 @@ export default function AgentLab({ report }: Props) {
                 <p className="text-xs text-slate-400">
                   Strategy Approved
                 </p>
-
                 <p className="mt-2 font-semibold text-amber-300">
                   {blueResult.strategy_approved
                     ? "Yes"
-                    : "No — pending verification"}
+                    : "No — pending independent verification"}
                 </p>
               </div>
             </div>
           </div>
 
-          {/* VOTE TABLE */}
+          {/* BLUE AGENT VOTES */}
           <div className="overflow-x-auto">
             <table className="w-full min-w-[480px] text-left text-sm">
               <thead className="border-b border-slate-700 text-slate-400">
@@ -704,11 +763,9 @@ export default function AgentLab({ report }: Props) {
                   <th className="py-4 font-medium">
                     Condition
                   </th>
-
                   <th className="py-4 font-medium">
                     Anomaly Score
                   </th>
-
                   <th className="py-4 font-medium">
                     Prediction
                   </th>
@@ -753,7 +810,239 @@ export default function AgentLab({ report }: Props) {
         </section>
       )}
 
-      {/* BATCH RELIABILITY */}
+      {/* VERIFICATION GATE RESULTS */}
+      <section className="space-y-6 rounded-2xl border border-slate-800 bg-[#131c2c] p-6">
+        <div className="flex items-center gap-3">
+          <ShieldCheck
+            size={24}
+            className={
+              verificationFailed
+                ? "text-rose-400"
+                : "text-emerald-400"
+            }
+          />
+
+          <div>
+            <h2 className="text-xl font-semibold text-white">
+              Verification Gate
+            </h2>
+
+            <p className="mt-1 text-sm text-slate-400">
+              Meta DINOv2 baseline vs. Blue Agent
+              multi-view consensus
+            </p>
+          </div>
+        </div>
+
+        {verificationLoading && (
+          <p className="text-sm text-slate-400">
+            Loading verification report...
+          </p>
+        )}
+
+        {verificationError && (
+          <div className="rounded-xl border border-rose-500/20 bg-rose-500/10 p-4 text-sm text-rose-300">
+            {verificationError}
+          </div>
+        )}
+
+        {verification && (
+          <>
+            {/* GATE DECISION */}
+            <div className="flex flex-wrap items-center gap-3">
+              <span
+                className={`rounded-lg px-3 py-2 text-sm font-semibold ${
+                  verificationFailed
+                    ? "bg-rose-500/10 text-rose-300"
+                    : "bg-amber-500/10 text-amber-300"
+                }`}
+              >
+                {formatCheckName(
+                  verification.decision
+                )}
+              </span>
+
+              <span className="text-sm text-slate-400">
+                {verification.samples_evaluated} images
+                evaluated
+              </span>
+            </div>
+
+            {/* METRICS COMPARISON */}
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[500px] text-left text-sm">
+                <thead>
+                  <tr className="border-b border-slate-700 text-slate-400">
+                    <th className="py-3 font-medium">
+                      Metric
+                    </th>
+                    <th className="py-3 font-medium">
+                      DINOv2 Baseline
+                    </th>
+                    <th className="py-3 font-medium">
+                      Blue Agent
+                    </th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {(
+                    [
+                      ["Accuracy", "accuracy"],
+                      ["Precision", "precision"],
+                      ["Recall", "recall"],
+                      [
+                        "False Alarm Rate",
+                        "false_alarm_rate",
+                      ],
+                    ] as const
+                  ).map(([label, key]) => (
+                    <tr
+                      key={key}
+                      className="border-b border-slate-800"
+                    >
+                      <td className="py-3 text-white">
+                        {label}
+                      </td>
+                      <td className="py-3 text-slate-300">
+                        {formatPercentage(
+                          verification.baseline[key]
+                        )}
+                      </td>
+                      <td className="py-3 text-indigo-300">
+                        {formatPercentage(
+                          verification.candidate_metrics[key]
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+
+                  {(
+                    [
+                      ["True Positives", "tp"],
+                      ["True Negatives", "tn"],
+                      ["False Positives", "fp"],
+                      ["False Negatives", "fn"],
+                    ] as const
+                  ).map(([label, key]) => (
+                    <tr
+                      key={key}
+                      className="border-b border-slate-800"
+                    >
+                      <td className="py-3 text-white">
+                        {label}
+                      </td>
+                      <td className="py-3 text-slate-300">
+                        {verification.baseline[key]}
+                      </td>
+                      <td className="py-3 text-indigo-300">
+                        {verification.candidate_metrics[key]}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* VERIFICATION CHECKS */}
+            <div>
+              <h3 className="mb-3 font-semibold text-white">
+                Verification Checks
+              </h3>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                {Object.entries(verification.checks).map(
+                  ([name, passed]) => (
+                    <div
+                      key={name}
+                      className="flex items-center gap-3 rounded-xl bg-slate-900 p-4"
+                    >
+                      {passed ? (
+                        <CheckCircle2
+                          size={18}
+                          className="shrink-0 text-emerald-400"
+                        />
+                      ) : (
+                        <AlertTriangle
+                          size={18}
+                          className="shrink-0 text-rose-400"
+                        />
+                      )}
+
+                      <div className="min-w-0">
+                        <p className="break-words text-sm text-slate-200">
+                          {formatCheckName(name)}
+                        </p>
+
+                        <p
+                          className={
+                            passed
+                              ? "text-xs text-emerald-400"
+                              : "text-xs text-rose-400"
+                          }
+                        >
+                          {passed ? "PASS" : "FAIL"}
+                        </p>
+                      </div>
+                    </div>
+                  )
+                )}
+              </div>
+            </div>
+
+            {/* NEW FAILURES */}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="rounded-xl bg-slate-900 p-4">
+                <p className="text-xs text-slate-400">
+                  New Missed Defects
+                </p>
+                <p className="mt-2 text-2xl font-bold text-white">
+                  {verification.new_missed_defects.length}
+                </p>
+              </div>
+
+              <div className="rounded-xl bg-slate-900 p-4">
+                <p className="text-xs text-slate-400">
+                  New False Alarms
+                </p>
+                <p className="mt-2 text-2xl font-bold text-rose-400">
+                  {verification.new_false_alarms.length}
+                </p>
+              </div>
+            </div>
+
+            {/* VERIFICATION DISCLAIMER */}
+            <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 text-xs leading-6 text-slate-400">
+              <p>
+                The Blue Agent increased defect recall,
+                but introduced additional false alarms.
+                Therefore, the Verification Gate rejected
+                the experimental strategy.
+              </p>
+
+              <p className="mt-2">
+                Independent validation:{" "}
+                {verification.independent_validation
+                  ? "Yes"
+                  : "No"}
+                . Production approved:{" "}
+                {verification.production_approved
+                  ? "Yes"
+                  : "No"}.
+              </p>
+
+              <p className="mt-2">
+                This dataset has already been explored
+                during development. Results are
+                exploratory and do not establish
+                independent validation.
+              </p>
+            </div>
+          </>
+        )}
+      </section>
+
+      {/* EXISTING BATCH RELIABILITY */}
       <BatchScan />
     </div>
   );

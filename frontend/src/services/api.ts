@@ -302,3 +302,43 @@ export async function runBlueAgent(
 
   return response.json() as Promise<BlueAgentResult>;
 }
+
+export interface VerificationMetrics {
+  accuracy: number;
+  precision: number;
+  recall: number;
+  false_alarm_rate: number;
+  tp: number;
+  tn: number;
+  fp: number;
+  fn: number;
+}
+
+export interface Dinov2VerificationResult {
+  model: string;
+  candidate: string;
+  decision: string;
+  samples_evaluated: number;
+  baseline: VerificationMetrics;
+  candidate_metrics: VerificationMetrics;
+  checks: Record<string, boolean>;
+  new_missed_defects: string[];
+  new_false_alarms: string[];
+  independent_validation: boolean;
+  production_approved: boolean;
+}
+
+export async function getDinov2Verification():
+  Promise<Dinov2VerificationResult> {
+  const response = await fetch(
+    "/api/faultforge/verification/dinov2"
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      `Verification report unavailable: HTTP ${response.status}`
+    );
+  }
+
+  return response.json() as Promise<Dinov2VerificationResult>;
+}
