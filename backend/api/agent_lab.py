@@ -6,6 +6,7 @@ from backend.vision.reliability_test import run_reliability_test
 from pathlib import PurePosixPath
 
 from backend.agents.red_agent import RedAgent
+from backend.agents.blue_agent import BlueAgent
 from backend.vision.reliability_test import DATA_DIR
 router = APIRouter(
     prefix="/api/faultforge",
@@ -103,6 +104,58 @@ def discover_red_agent_failures(request: ReliabilityTestRequest):
         return result
 
     except RuntimeError as error:
+        raise HTTPException(
+            status_code=500,
+            detail=str(error)
+        )
+
+@router.post("/blue-agent/evaluate")
+def evaluate_blue_agent(request: ReliabilityTestRequest):
+    sample_id = request.sample_id.replace("\\", "/")
+
+    # Reuse the exact same image validation as Red Agent.
+    from pathlib import PurePosixPath
+
+    relative = PurePosixPath(sample_id)
+
+    if (
+        len(relative.parts) != 3
+        or relative.parts[0] != "test"
+        or relative.is_absolute()
+        or any(part in {"", ".", ".."} for part in relative.parts)
+        or relative.suffix.lower() not in {".png", ".jpg", ".jpeg"}
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid inspection sample."
+        )
+
+    root = DATA_DIR.resolve()
+    image_path = root.joinpath(*relative.parts).resolve()
+
+    if not image_path.is_relative_to(root):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid inspection path."
+        )
+
+    if not image_path.is_file():
+        raise HTTPException(
+            status_code=404,
+            detail="Inspection image not found."
+        )
+
+    actual_defect = relative.parts[1] != "good"
+
+    try:
+        result = BlueAgent().evaluate(
+            image_path,
+            actual_defect=actual_defect,
+        )
+        result["sample_id"] = sample_id
+        return result
+
+    except (ValueError, RuntimeError) as error:
         raise HTTPException(
             status_code=500,
             detail=str(error)

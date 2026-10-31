@@ -16,6 +16,7 @@ import {
 import {
   getDinov2Cases,
   runRedAgent,
+  runBlueAgent,
   getInspectionImageUrl,
 } from "../services/api";
 
@@ -23,6 +24,7 @@ import type {
   FaultForgeReport,
   Dinov2Case,
   RedAgentResult,
+  BlueAgentResult,
 } from "../services/api";
 
 interface Props {
@@ -40,10 +42,17 @@ const labels: Record<string, string> = {
 export default function AgentLab({ report }: Props) {
   const [cases, setCases] = useState<Dinov2Case[]>([]);
   const [sampleId, setSampleId] = useState("");
-  const [result, setResult] = useState<RedAgentResult | null>(null);
+
+  const [redResult, setRedResult] =
+    useState<RedAgentResult | null>(null);
+
+  const [blueResult, setBlueResult] =
+    useState<BlueAgentResult | null>(null);
 
   const [loadingCases, setLoadingCases] = useState(true);
-  const [running, setRunning] = useState(false);
+  const [runningRed, setRunningRed] = useState(false);
+  const [runningBlue, setRunningBlue] = useState(false);
+
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -82,31 +91,56 @@ export default function AgentLab({ report }: Props) {
     };
   }, []);
 
-  async function handleRun() {
-    if (!sampleId || running) return;
-
-    setRunning(true);
+  function handleSampleChange(value: string) {
+    setSampleId(value);
+    setRedResult(null);
+    setBlueResult(null);
     setError("");
-    setResult(null);
+  }
+
+  async function handleRunRed() {
+    if (!sampleId || runningRed || runningBlue) return;
+
+    setRunningRed(true);
+    setError("");
+    setRedResult(null);
 
     try {
       const response = await runRedAgent(sampleId);
-      setResult(response);
+      setRedResult(response);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : String(err)
       );
     } finally {
-      setRunning(false);
+      setRunningRed(false);
     }
   }
 
-  const incorrect = result?.incorrect_predictions ?? 0;
-  const flips = result?.prediction_flips ?? 0;
+  async function handleRunBlue() {
+    if (!sampleId || runningRed || runningBlue) return;
+
+    setRunningBlue(true);
+    setError("");
+    setBlueResult(null);
+
+    try {
+      const response = await runBlueAgent(sampleId);
+      setBlueResult(response);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : String(err)
+      );
+    } finally {
+      setRunningBlue(false);
+    }
+  }
+
+  const isRunning = runningRed || runningBlue;
 
   return (
     <div className="space-y-7">
-      {/* HEADER */}
+      {/* PAGE HEADER */}
       <div>
         <p className="text-xs font-semibold tracking-widest text-violet-400">
           META-POWERED ADVERSARIAL TESTING
@@ -117,24 +151,29 @@ export default function AgentLab({ report }: Props) {
         </h1>
 
         <p className="mt-2 text-sm text-slate-400">
-          Discover model weaknesses through controlled
-          perturbations and live Meta DINOv2 inference.
+          Discover model weaknesses and evaluate
+          experimental defense strategies using real
+          Meta DINOv2 inference.
         </p>
       </div>
 
       {/* AGENT OVERVIEW */}
       <div className="grid gap-4 md:grid-cols-3">
+        {/* RED AGENT */}
         <div className="rounded-2xl border border-rose-500/30 bg-[#131c2c] p-5">
-          <ShieldAlert size={23} className="text-rose-400" />
+          <ShieldAlert
+            size={23}
+            className="text-rose-400"
+          />
 
           <h3 className="mt-3 font-semibold text-white">
             Red Agent
           </h3>
 
           <p className="mt-2 text-xs leading-5 text-slate-400">
-            Active. Runs controlled visual tests using real
-            Meta DINOv2 inference and detects prediction flips
-            and incorrect predictions.
+            Executes controlled visual perturbations
+            against Meta DINOv2 and discovers incorrect
+            predictions and prediction flips.
           </p>
 
           <span className="mt-4 inline-block rounded-lg bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-400">
@@ -142,23 +181,29 @@ export default function AgentLab({ report }: Props) {
           </span>
         </div>
 
-        <div className="rounded-2xl border border-slate-800 bg-[#131c2c] p-5">
-          <Bot size={23} className="text-violet-400" />
+        {/* BLUE AGENT */}
+        <div className="rounded-2xl border border-indigo-500/30 bg-[#131c2c] p-5">
+          <Bot
+            size={23}
+            className="text-indigo-400"
+          />
 
           <h3 className="mt-3 font-semibold text-white">
             Blue Agent
           </h3>
 
           <p className="mt-2 text-xs leading-5 text-slate-400">
-            Planned. Will explore improvement strategies
-            based on observed failure patterns.
+            Evaluates an experimental multi-view
+            majority-voting strategy using five
+            DINOv2 predictions.
           </p>
 
-          <span className="mt-4 inline-block rounded-lg bg-slate-700/50 px-3 py-1 text-xs text-slate-400">
-            Not implemented
+          <span className="mt-4 inline-block rounded-lg bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-300">
+            Experimental
           </span>
         </div>
 
+        {/* VERIFICATION GATE */}
         <div className="rounded-2xl border border-slate-800 bg-[#131c2c] p-5">
           <ShieldCheck
             size={23}
@@ -170,40 +215,54 @@ export default function AgentLab({ report }: Props) {
           </h3>
 
           <p className="mt-2 text-xs leading-5 text-slate-400">
-            Historical gate decision:{" "}
+            Historical verification decision:{" "}
             {report.verification.decision}.
-            Independent DINOv2 validation is not yet
-            implemented.
+            Independent DINOv2 strategy validation
+            is not yet implemented.
           </p>
+
+          <span className="mt-4 inline-block rounded-lg bg-slate-700/50 px-3 py-1 text-xs text-slate-400">
+            Pending validation
+          </span>
         </div>
       </div>
 
-      {/* RED AGENT EXECUTION */}
+      {/* EXECUTION PANEL */}
       <section className="rounded-2xl border border-slate-800 bg-[#131c2c] p-6">
         <div className="flex items-center gap-3">
-          <Activity size={21} className="text-violet-400" />
+          <Activity
+            size={21}
+            className="text-violet-400"
+          />
 
           <h2 className="text-xl font-semibold text-white">
-            Run Red Agent
+            Run AI Agents
           </h2>
         </div>
 
         <p className="mt-2 text-sm text-slate-400">
-          Select an inspection image and execute five
-          live DINOv2 tests: original, dark, bright,
-          low contrast and high contrast.
+          Select an inspection image and run Red Agent
+          to discover model weaknesses, or Blue Agent
+          to evaluate a multi-view consensus strategy.
         </p>
 
-        <div className="mt-6 flex flex-col gap-4 md:flex-row">
+        {/* SAMPLE SELECTOR */}
+        <div className="mt-6">
+          <label
+            htmlFor="sample-selector"
+            className="mb-2 block text-xs font-medium text-slate-400"
+          >
+            Inspection Sample
+          </label>
+
           <select
+            id="sample-selector"
             value={sampleId}
-            onChange={(event) => {
-              setSampleId(event.target.value);
-              setResult(null);
-              setError("");
-            }}
-            disabled={loadingCases || running}
-            className="min-w-0 flex-1 rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-white"
+            onChange={(event) =>
+              handleSampleChange(event.target.value)
+            }
+            disabled={loadingCases || isRunning}
+            className="w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-white"
           >
             {cases.length === 0 && (
               <option value="">
@@ -222,13 +281,20 @@ export default function AgentLab({ report }: Props) {
               </option>
             ))}
           </select>
+        </div>
 
+        {/* ACTION BUTTONS */}
+        <div className="mt-4 flex flex-col gap-3 sm:flex-row">
           <button
-            onClick={handleRun}
-            disabled={!sampleId || running || loadingCases}
-            className="flex items-center justify-center gap-2 rounded-xl bg-violet-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-violet-500 disabled:opacity-50"
+            onClick={handleRunRed}
+            disabled={
+              !sampleId ||
+              isRunning ||
+              loadingCases
+            }
+            className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-violet-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {running ? (
+            {runningRed ? (
               <LoaderCircle
                 size={18}
                 className="animate-spin"
@@ -237,17 +303,44 @@ export default function AgentLab({ report }: Props) {
               <Play size={18} />
             )}
 
-            {running ? "Running Red Agent..." : "Run Red Agent"}
+            {runningRed
+              ? "Running Red Agent..."
+              : "Run Red Agent"}
+          </button>
+
+          <button
+            onClick={handleRunBlue}
+            disabled={
+              !sampleId ||
+              isRunning ||
+              loadingCases
+            }
+            className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {runningBlue ? (
+              <LoaderCircle
+                size={18}
+                className="animate-spin"
+              />
+            ) : (
+              <Bot size={18} />
+            )}
+
+            {runningBlue
+              ? "Running Blue Agent..."
+              : "Run Blue Agent"}
           </button>
         </div>
 
         <p className="mt-4 text-xs leading-5 text-slate-500">
-          The model runs locally on CPU. The first execution
-          may load Meta DINOv2 into memory; subsequent
-          executions reuse the cached model.
-          Test transformations are deterministic.
+          Both agents use real Meta DINOv2 inference
+          running locally on CPU. Red Agent generates
+          deterministic visual transformations. Blue
+          Agent evaluates an experimental decision rule.
+          Neither constitutes independent validation.
         </p>
 
+        {/* ERROR MESSAGE */}
         {error && (
           <div className="mt-5 flex items-start gap-3 rounded-xl border border-rose-500/20 bg-rose-500/10 p-4 text-sm text-rose-300">
             <AlertTriangle
@@ -261,106 +354,124 @@ export default function AgentLab({ report }: Props) {
       </section>
 
       {/* RED AGENT RESULTS */}
-      {result && (
-        <section className="space-y-6 rounded-2xl border border-slate-800 bg-[#131c2c] p-6">
+      {redResult && (
+        <section className="space-y-6 rounded-2xl border border-rose-500/20 bg-[#131c2c] p-6">
           <div>
             <h2 className="text-xl font-semibold text-white">
-              Red Agent Results
+              Red Agent — Failure Discovery
             </h2>
 
             <p className="mt-2 break-all text-sm text-slate-400">
-              {result.sample_id} · {result.model}
+              {redResult.sample_id} · {redResult.model}
             </p>
 
             <p className="mt-2 text-xs text-emerald-400">
-              Live Meta model inference completed
+              Meta DINOv2 inference completed
             </p>
           </div>
 
-          {/* METRICS */}
+          {/* RED METRICS */}
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {[
-              ["Total Tests", String(result.total_tests)],
-              ["Incorrect Predictions", String(incorrect)],
-              ["Prediction Flips", String(flips)],
-              ["Threshold", result.threshold.toFixed(4)],
-            ].map(([label, value]) => (
-              <div
-                key={label}
-                className="rounded-xl bg-slate-900 p-4"
-              >
-                <p className="text-xs text-slate-400">
-                  {label}
-                </p>
+            <div className="rounded-xl bg-slate-900 p-4">
+              <p className="text-xs text-slate-400">
+                Total Tests
+              </p>
 
-                <p className="mt-2 text-2xl font-bold text-white">
-                  {value}
-                </p>
-              </div>
-            ))}
+              <p className="mt-2 text-2xl font-bold text-white">
+                {redResult.total_tests}
+              </p>
+            </div>
+
+            <div className="rounded-xl bg-slate-900 p-4">
+              <p className="text-xs text-slate-400">
+                Incorrect Predictions
+              </p>
+
+              <p className="mt-2 text-2xl font-bold text-rose-400">
+                {redResult.incorrect_predictions}
+              </p>
+            </div>
+
+            <div className="rounded-xl bg-slate-900 p-4">
+              <p className="text-xs text-slate-400">
+                Prediction Flips
+              </p>
+
+              <p className="mt-2 text-2xl font-bold text-violet-400">
+                {redResult.prediction_flips}
+              </p>
+            </div>
+
+            <div className="rounded-xl bg-slate-900 p-4">
+              <p className="text-xs text-slate-400">
+                Detection Threshold
+              </p>
+
+              <p className="mt-2 text-2xl font-bold text-white">
+                {redResult.threshold.toFixed(4)}
+              </p>
+            </div>
           </div>
 
           {/* IMAGE AND SUMMARY */}
           <div className="grid gap-5 lg:grid-cols-2">
             <div className="rounded-xl bg-white p-4">
               <img
-                src={getInspectionImageUrl(result.sample_id)}
-                alt={`Inspection ${result.sample_id}`}
+                src={getInspectionImageUrl(
+                  redResult.sample_id
+                )}
+                alt={`Inspection ${redResult.sample_id}`}
                 className="mx-auto max-h-[300px] object-contain"
               />
             </div>
 
             <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-5">
               <h3 className="font-semibold text-white">
-                Failure Discovery Summary
+                Failure Summary
               </h3>
 
               <p className="mt-4 text-sm text-slate-300">
                 Original prediction:{" "}
                 <strong>
-                  {result.original_prediction
-                    ? "DEFECT"
-                    : "NORMAL"}
+                  {redResult.original_prediction
+                    ? "Defect"
+                    : "Normal"}
                 </strong>
               </p>
 
               <p className="mt-3 text-sm text-slate-300">
                 Ground truth:{" "}
                 <strong>
-                  {result.actual_defect === null
-                    ? "UNKNOWN"
-                    : result.actual_defect
-                    ? "DEFECT"
-                    : "NORMAL"}
-                </strong>
-              </p>
-
-              <p className="mt-3 text-sm text-slate-300">
-                Incorrect predictions:{" "}
-                <strong className="text-rose-400">
-                  {incorrect}
+                  {redResult.actual_defect === null
+                    ? "Unknown"
+                    : redResult.actual_defect
+                    ? "Defect"
+                    : "Normal"}
                 </strong>
               </p>
 
               <p className="mt-3 text-sm text-slate-300">
                 Prediction flips:{" "}
                 <strong className="text-violet-400">
-                  {flips}
+                  {redResult.prediction_flips}
                 </strong>
               </p>
 
               <p className="mt-4 text-xs leading-5 text-slate-400">
-                Conditions with incorrect predictions:{" "}
-                {result.worst_conditions.length > 0
-                  ? result.worst_conditions
-                      .map((name) => labels[name] ?? name)
+                Incorrect conditions:{" "}
+                {redResult.worst_conditions.length > 0
+                  ? redResult.worst_conditions
+                      .map(
+                        (condition) =>
+                          labels[condition] ?? condition
+                      )
                       .join(", ")
-                  : "None detected"}
+                  : "None"}
               </p>
             </div>
           </div>
 
-          {/* TEST RESULTS TABLE */}
+          {/* RED RESULTS TABLE */}
           <div className="overflow-x-auto">
             <table className="w-full min-w-[650px] text-left text-sm">
               <thead className="border-b border-slate-700 text-slate-400">
@@ -388,7 +499,7 @@ export default function AgentLab({ report }: Props) {
               </thead>
 
               <tbody>
-                {result.tests.map((test) => (
+                {redResult.tests.map((test) => (
                   <tr
                     key={test.condition}
                     className="border-b border-slate-800 last:border-0"
@@ -451,19 +562,198 @@ export default function AgentLab({ report }: Props) {
             </table>
           </div>
 
-          {/* DISCLAIMER */}
-          <div className="rounded-xl border border-violet-500/20 bg-violet-500/5 p-4 text-xs leading-6 text-slate-400">
-            Red Agent executes real Meta DINOv2 inference
-            using deterministic visual perturbations.
-            Prediction flips reveal sensitivity to
-            transformations, not necessarily adversarial
-            attacks. This is exploratory evaluation;
-            independent validation is not yet complete.
+          <div className="rounded-xl border border-rose-500/20 bg-rose-500/5 p-4 text-xs leading-6 text-slate-400">
+            Red Agent uses real Meta DINOv2 inference
+            with deterministic perturbations. Prediction
+            flips demonstrate model sensitivity, not
+            necessarily adversarial attacks.
+            Independent validation is not yet complete.
           </div>
         </section>
       )}
 
-      {/* EXISTING BATCH SCAN */}
+      {/* BLUE AGENT RESULTS */}
+      {blueResult && (
+        <section className="space-y-6 rounded-2xl border border-indigo-500/30 bg-[#131c2c] p-6">
+          <div>
+            <h2 className="text-xl font-semibold text-white">
+              Blue Agent — Strategy Evaluation
+            </h2>
+
+            <p className="mt-2 break-all text-sm text-slate-400">
+              {blueResult.sample_id} · {blueResult.model}
+            </p>
+
+            <p className="mt-2 text-xs text-indigo-400">
+              Strategy: Multi-view majority vote
+            </p>
+          </div>
+
+          {/* BLUE METRICS */}
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="rounded-xl bg-slate-900 p-4">
+              <p className="text-xs text-slate-400">
+                Baseline Prediction
+              </p>
+
+              <p className="mt-2 text-xl font-bold text-white">
+                {blueResult.baseline_prediction
+                  ? "Defect"
+                  : "Normal"}
+              </p>
+            </div>
+
+            <div className="rounded-xl bg-slate-900 p-4">
+              <p className="text-xs text-slate-400">
+                Consensus Prediction
+              </p>
+
+              <p className="mt-2 text-xl font-bold text-indigo-400">
+                {blueResult.consensus_prediction
+                  ? "Defect"
+                  : "Normal"}
+              </p>
+            </div>
+
+            <div className="rounded-xl bg-slate-900 p-4">
+              <p className="text-xs text-slate-400">
+                Defect Votes
+              </p>
+
+              <p className="mt-2 text-2xl font-bold text-rose-400">
+                {blueResult.defect_votes}
+              </p>
+            </div>
+
+            <div className="rounded-xl bg-slate-900 p-4">
+              <p className="text-xs text-slate-400">
+                Normal Votes
+              </p>
+
+              <p className="mt-2 text-2xl font-bold text-emerald-400">
+                {blueResult.normal_votes}
+              </p>
+            </div>
+          </div>
+
+          {/* DECISION COMPARISON */}
+          <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-5">
+            <h3 className="font-semibold text-white">
+              Strategy Comparison
+            </h3>
+
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              <div>
+                <p className="text-xs text-slate-400">
+                  Decision Changed
+                </p>
+
+                <p className="mt-2 font-semibold text-white">
+                  {blueResult.changed_decision
+                    ? "Yes"
+                    : "No"}
+                </p>
+              </div>
+
+              <div>
+                <p className="text-xs text-slate-400">
+                  Comparison
+                </p>
+
+                <p className="mt-2 font-semibold text-indigo-300">
+                  {blueResult.comparison.replaceAll(
+                    "_",
+                    " "
+                  )}
+                </p>
+              </div>
+
+              <div>
+                <p className="text-xs text-slate-400">
+                  Ground Truth
+                </p>
+
+                <p className="mt-2 font-semibold text-white">
+                  {blueResult.actual_defect === null
+                    ? "Unknown"
+                    : blueResult.actual_defect
+                    ? "Defect"
+                    : "Normal"}
+                </p>
+              </div>
+
+              <div>
+                <p className="text-xs text-slate-400">
+                  Strategy Approved
+                </p>
+
+                <p className="mt-2 font-semibold text-amber-300">
+                  {blueResult.strategy_approved
+                    ? "Yes"
+                    : "No — pending verification"}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* VOTE TABLE */}
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[480px] text-left text-sm">
+              <thead className="border-b border-slate-700 text-slate-400">
+                <tr>
+                  <th className="py-4 font-medium">
+                    Condition
+                  </th>
+
+                  <th className="py-4 font-medium">
+                    Anomaly Score
+                  </th>
+
+                  <th className="py-4 font-medium">
+                    Prediction
+                  </th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {blueResult.votes.map((vote) => (
+                  <tr
+                    key={vote.condition}
+                    className="border-b border-slate-800 last:border-0"
+                  >
+                    <td className="py-4 text-white">
+                      {labels[vote.condition] ??
+                        vote.condition}
+                    </td>
+
+                    <td className="py-4 font-mono text-slate-300">
+                      {vote.anomaly_score.toFixed(4)}
+                    </td>
+
+                    <td
+                      className={
+                        vote.predicted_defect
+                          ? "py-4 text-rose-400"
+                          : "py-4 text-emerald-400"
+                      }
+                    >
+                      {vote.predicted_defect
+                        ? "Defect"
+                        : "Normal"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="rounded-xl border border-indigo-500/20 bg-indigo-500/5 p-4 text-xs leading-6 text-slate-400">
+            {blueResult.note}
+          </div>
+        </section>
+      )}
+
+      {/* BATCH RELIABILITY */}
       <BatchScan />
     </div>
   );
