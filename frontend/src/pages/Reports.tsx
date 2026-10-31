@@ -395,14 +395,6 @@ export default function Reports() {
           </p>
         </div>
       )}
-
-      <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 text-sm leading-6 text-amber-200">
-        These results are exploratory. The MVTec AD test
-        dataset has already been examined during
-        development. Independent validation has not
-        been performed, and dataset-use clearance for
-        the hackathon remains unresolved.
-      </div>
     </div>
   );
 }
