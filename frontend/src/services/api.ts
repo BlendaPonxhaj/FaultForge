@@ -196,3 +196,8 @@ export async function getDinov2Cases(): Promise<Dinov2CasesResponse> {
 
   return response.json() as Promise<Dinov2CasesResponse>;
 }
+
+export function getDinov2HeatmapUrl(sampleId: string): string {
+  return "/api/faultforge/dinov2/heatmap/" +
+    sampleId.split("/").map(encodeURIComponent).join("/");
+}

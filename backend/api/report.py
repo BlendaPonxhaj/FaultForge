@@ -270,3 +270,36 @@ def get_dinov2_cases():
         "total_failures": analysis["total_failures"],
         "cases": cases,
     }
+
+@router.get("/dinov2/heatmap/{image_path:path}")
+def get_dinov2_heatmap(image_path: str):
+    base = (RESULTS / "dinov2_heatmaps").resolve()
+    relative = PurePosixPath(image_path.replace("\\", "/"))
+
+    if (
+        len(relative.parts) != 3
+        or relative.parts[0] != "test"
+        or any(part in {"", ".", ".."} for part in relative.parts)
+        or relative.suffix.lower() != ".png"
+        or relative.is_absolute()
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid heatmap path"
+        )
+
+    file_path = base.joinpath(*relative.parts).resolve()
+
+    if not file_path.is_relative_to(base):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid heatmap location"
+        )
+
+    if not file_path.is_file():
+        raise HTTPException(
+            status_code=404,
+            detail="DINOv2 heatmap not found"
+        )
+
+    return FileResponse(file_path, media_type="image/png")
