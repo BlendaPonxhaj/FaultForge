@@ -4,123 +4,46 @@ from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
-import torch
 from PIL import Image, ImageEnhance
-from torchvision import models, transforms
+
+from backend.vision.meta_dinov2 import extract_meta_features
 
 ROOT = Path(__file__).resolve().parents[2]
+
 DATA_DIR = ROOT / "experiments" / "data" / "mvtec" / "bottle"
-BASELINE_REPORT = ROOT / "experiments" / "results" / "bottle_baseline.json"
 
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-SEED = 42
-
-transform = transforms.Compose([
-    transforms.Resize((224, 224)),
-    transforms.ToTensor(),
-    transforms.Normalize(
-        mean=[0.485, 0.456, 0.406],
-        std=[0.229, 0.224, 0.225],
-    ),
-])
-
-
-def load_images(folder: Path):
-    return sorted(
-        path for path in folder.rglob("*")
-        if path.suffix.lower() in {".png", ".jpg", ".jpeg"}
-    )
-
-
-@torch.inference_mode()
-def extract_features(model, paths):
-    batches = []
-
-    for start in range(0, len(paths), 16):
-        images = []
-
-        for path in paths[start:start + 16]:
-            with Image.open(path) as img:
-                images.append(transform(img.convert("RGB")))
-
-        tensor = torch.stack(images).to(DEVICE)
-        batches.append(model(tensor).cpu().numpy())
-
-    return np.concatenate(batches, axis=0)
+CALIBRATION_FILE = (
+    ROOT / "experiments" / "results" / "dinov2_calibration.json"
+)
 
 
 @lru_cache(maxsize=1)
 def get_inspector():
-    """
-    Reconstructs the frozen global baseline using
-    the same normal training split and calibration.
-    Cached for subsequent API calls.
-    """
-    train_good = load_images(DATA_DIR / "train" / "good")
+    """Load the calibrated Meta DINOv2 reference."""
+    with open(CALIBRATION_FILE, encoding="utf-8") as f:
+        calibration = json.load(f)
 
-    if len(train_good) < 10:
-        raise RuntimeError("Normal training images are missing.")
+    if calibration["model_id"] != "dinov2_vits14":
+        raise RuntimeError("Unexpected calibration model.")
 
-    rng = np.random.default_rng(SEED)
-    shuffled = rng.permutation(len(train_good))
-    count = max(1, int(len(train_good) * 0.2))
-
-    validation_paths = [
-        train_good[i] for i in shuffled[:count]
-    ]
-    reference_paths = [
-        train_good[i] for i in shuffled[count:]
-    ]
-
-    model = models.resnet18(
-        weights=models.ResNet18_Weights.DEFAULT
-    )
-    model.fc = torch.nn.Identity()
-    model = model.to(DEVICE).eval()
-
-    reference_features = extract_features(
-        model, reference_paths
-    )
-    reference = reference_features.mean(axis=0)
-
-    validation_features = extract_features(
-        model, validation_paths
+    reference = np.asarray(
+        calibration["reference_embedding"],
+        dtype=np.float32,
     )
 
-    validation_scores = np.linalg.norm(
-        validation_features - reference,
-        axis=1
-    )
+    threshold = float(calibration["threshold"])
 
-    threshold = float(np.percentile(validation_scores, 95))
+    if reference.shape != (384,):
+        raise RuntimeError("Invalid DINOv2 reference embedding.")
 
-    # Verify that this is the same baseline as the saved report.
-    with open(BASELINE_REPORT, encoding="utf-8") as f:
-        saved = json.load(f)
+    if not np.isfinite(threshold):
+        raise RuntimeError("Invalid calibration threshold.")
 
-    saved_threshold = float(saved["threshold"])
-
-    if not np.isclose(threshold, saved_threshold, atol=1e-3):
-        raise RuntimeError(
-            "Baseline calibration differs from saved report. "
-            "Check dataset and model configuration."
-        )
-
-    return model, reference, threshold
+    return reference, threshold
 
 
 def run_reliability_test(sample_id: str):
-    with open(BASELINE_REPORT, encoding="utf-8") as f:
-        baseline = json.load(f)
-
-    known_samples = {
-        item["sample_id"].replace("\\", "/"): item
-        for item in baseline["predictions"]
-    }
-
-    if sample_id not in known_samples:
-        raise ValueError("Unknown inspection sample.")
-
+    sample_id = sample_id.replace("\\", "/")
     parts = sample_id.split("/")
 
     if (
@@ -132,37 +55,48 @@ def run_reliability_test(sample_id: str):
 
     image_path = DATA_DIR.joinpath(*parts)
 
-    if not image_path.is_file():
+    if (
+        not image_path.is_file()
+        or image_path.suffix.lower() not in {".png", ".jpg", ".jpeg"}
+    ):
         raise FileNotFoundError(sample_id)
 
-    model, reference, threshold = get_inspector()
+    reference, threshold = get_inspector()
 
     with Image.open(image_path) as img:
         original = img.convert("RGB")
 
     variants = [
         ("original", original),
-        ("dark", ImageEnhance.Brightness(original).enhance(0.55)),
-        ("bright", ImageEnhance.Brightness(original).enhance(1.4)),
-        ("low_contrast", ImageEnhance.Contrast(original).enhance(0.6)),
-        ("high_contrast", ImageEnhance.Contrast(original).enhance(1.4)),
+        (
+            "dark",
+            ImageEnhance.Brightness(original).enhance(0.55),
+        ),
+        (
+            "bright",
+            ImageEnhance.Brightness(original).enhance(1.4),
+        ),
+        (
+            "low_contrast",
+            ImageEnhance.Contrast(original).enhance(0.6),
+        ),
+        (
+            "high_contrast",
+            ImageEnhance.Contrast(original).enhance(1.4),
+        ),
     ]
 
-    batch = torch.stack([
-        transform(image) for _, image in variants
-    ]).to(DEVICE)
-
-    with torch.inference_mode():
-        embeddings = model(batch).cpu().numpy()
+    embeddings = extract_meta_features(
+        [image for _, image in variants]
+    )
 
     scores = np.linalg.norm(
         embeddings - reference,
-        axis=1
+        axis=1,
     )
 
-    actual_defect = bool(
-        known_samples[sample_id]["actual_defect"]
-    )
+    # MVTec AD: test/good contains normal images.
+    actual_defect = parts[1] != "good"
 
     results = []
 
@@ -186,7 +120,7 @@ def run_reliability_test(sample_id: str):
 
     return {
         "sample_id": sample_id,
-        "model": "ResNet18 Global Baseline",
+        "model": "Meta DINOv2 ViT-S/14",
         "actual_defect": actual_defect,
         "threshold": threshold,
         "tests": results,
@@ -195,7 +129,8 @@ def run_reliability_test(sample_id: str):
         "evaluation_type": "synthetic_robustness",
         "independent_validation": False,
         "note": (
-            "Prediction changes under synthetic transforms "
-            "do not by themselves prove improved defect detection."
+            "Meta DINOv2 global embeddings with a calibrated "
+            "normal-reference threshold. Synthetic robustness "
+            "tests do not establish independent validation."
         ),
     }
