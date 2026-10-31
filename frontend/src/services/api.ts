@@ -249,3 +249,96 @@ export async function runRedAgent(
 
   return response.json() as Promise<RedAgentResult>;
 }
+
+export interface BlueAgentResult {
+  sample_id: string;
+  model: string;
+  strategy: string;
+  threshold: number;
+  baseline_prediction: boolean;
+  consensus_prediction: boolean;
+  changed_decision: boolean;
+  defect_votes: number;
+  normal_votes: number;
+  total_votes: number;
+  prediction_flips: number;
+  actual_defect: boolean | null;
+  baseline_correct: boolean | null;
+  consensus_correct: boolean | null;
+  comparison: string;
+  strategy_approved: boolean;
+  independent_validation: boolean;
+  note: string;
+  votes: {
+    condition: string;
+    anomaly_score: number;
+    predicted_defect: boolean;
+  }[];
+}
+
+export async function runBlueAgent(
+  sampleId: string
+): Promise<BlueAgentResult> {
+  const response = await fetch(
+    "/api/faultforge/blue-agent/evaluate",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        sample_id: sampleId,
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => null);
+    throw new Error(
+      error?.detail ??
+      `Blue Agent failed: HTTP ${response.status}`
+    );
+  }
+
+  return response.json() as Promise<BlueAgentResult>;
+}
+
+export interface VerificationMetrics {
+  accuracy: number;
+  precision: number;
+  recall: number;
+  false_alarm_rate: number;
+  tp: number;
+  tn: number;
+  fp: number;
+  fn: number;
+}
+
+export interface Dinov2VerificationResult {
+  model: string;
+  candidate: string;
+  decision: string;
+  samples_evaluated: number;
+  baseline: VerificationMetrics;
+  candidate_metrics: VerificationMetrics;
+  checks: Record<string, boolean>;
+  new_missed_defects: string[];
+  new_false_alarms: string[];
+  independent_validation: boolean;
+  production_approved: boolean;
+}
+
+export async function getDinov2Verification():
+  Promise<Dinov2VerificationResult> {
+  const response = await fetch(
+    "/api/faultforge/verification/dinov2"
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      `Verification report unavailable: HTTP ${response.status}`
+    );
+  }
+
+  return response.json() as Promise<Dinov2VerificationResult>;
+}
