@@ -28,14 +28,9 @@ import {
 } from "../services/api";
 
 import type {
-  FaultForgeReport,
   Dinov2VerificationResult,
   Dinov2CasesResponse,
 } from "../services/api";
-
-interface Props {
-  report: FaultForgeReport;
-}
 
 function percent(value: number): string {
   return `${(value * 100).toFixed(2)}%`;
@@ -45,7 +40,7 @@ function displayName(value: string): string {
   return value.replaceAll("_", " ");
 }
 
-export default function Dashboard(_props: Props) {
+export default function Dashboard() {
   const [verification, setVerification] =
     useState<Dinov2VerificationResult | null>(null);
 
@@ -64,13 +59,11 @@ export default function Dashboard(_props: Props) {
     ])
       .then(([gate, cases]) => {
         if (!active) return;
-
         setVerification(gate);
         setCasesData(cases);
       })
       .catch((err) => {
         if (!active) return;
-
         setError(
           err instanceof Error ? err.message : String(err)
         );
@@ -102,7 +95,6 @@ export default function Dashboard(_props: Props) {
         <h2 className="font-semibold text-rose-300">
           DINOv2 Dashboard Unavailable
         </h2>
-
         <p className="mt-2 text-sm text-slate-300">
           {error || "The required reports are unavailable."}
         </p>
@@ -139,7 +131,6 @@ export default function Dashboard(_props: Props) {
 
   return (
     <div className="space-y-8">
-      {/* HEADER */}
       <div>
         <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-violet-500/20 bg-violet-500/10 px-3 py-1 text-xs text-violet-300">
           <Activity size={13} />
@@ -159,7 +150,6 @@ export default function Dashboard(_props: Props) {
         </p>
       </div>
 
-      {/* METRICS */}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard
           label="DINOv2 Accuracy"
@@ -193,7 +183,6 @@ export default function Dashboard(_props: Props) {
         />
       </div>
 
-      {/* CHART AND GATE */}
       <div className="grid gap-5 xl:grid-cols-3">
         <section className="rounded-2xl border border-slate-800 bg-[#131c2c] p-6 xl:col-span-2">
           <h2 className="text-lg font-semibold text-white">
@@ -302,21 +291,22 @@ export default function Dashboard(_props: Props) {
             <p>
               Images evaluated: {verification.samples_evaluated}
             </p>
-
             <p>
               Independent validation:{" "}
-              {verification.independent_validation ? "Yes" : "No"}
+              {verification.independent_validation
+                ? "Yes"
+                : "No"}
             </p>
-
             <p>
               Production approved:{" "}
-              {verification.production_approved ? "Yes" : "No"}
+              {verification.production_approved
+                ? "Yes"
+                : "No"}
             </p>
           </div>
         </section>
       </div>
 
-      {/* FAILURE BREAKDOWN */}
       <div className="grid gap-5 lg:grid-cols-2">
         <section className="rounded-2xl border border-slate-800 bg-[#131c2c] p-6">
           <h2 className="font-semibold text-white">
@@ -324,7 +314,7 @@ export default function Dashboard(_props: Props) {
           </h2>
 
           <p className="mt-1 text-sm text-slate-400">
-            Defective images not detected by the DINOv2 baseline
+            Defective images not detected by DINOv2 baseline
           </p>
 
           <div className="mt-5 space-y-2">
@@ -358,7 +348,7 @@ export default function Dashboard(_props: Props) {
           </h2>
 
           <p className="mt-1 text-sm text-slate-400">
-            Normal images incorrectly flagged by the DINOv2 baseline
+            Normal images incorrectly flagged by DINOv2 baseline
           </p>
 
           <div className="mt-5 space-y-2">
