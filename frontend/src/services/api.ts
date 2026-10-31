@@ -156,3 +156,43 @@ export async function runBatchTest(): Promise<BatchReport> {
 
   return response.json() as Promise<BatchReport>;
 }
+
+export interface Dinov2Case {
+  sample_id: string;
+  category: string;
+  actual_defect: boolean;
+  status: "missed" | "false_alarm" | "detected" | "correct_normal";
+  prediction: {
+    predicted_defect: boolean;
+    anomaly_score: number;
+  };
+  prediction_changes: number;
+  failure_type: string | null;
+}
+
+export interface Dinov2CasesResponse {
+  model: string;
+  evaluation_type: string;
+  independent_validation: boolean;
+  metrics: {
+    accuracy: number;
+    precision: number;
+    recall: number;
+    f1_score: number;
+  };
+  total_cases: number;
+  total_failures: number;
+  cases: Dinov2Case[];
+}
+
+export async function getDinov2Cases(): Promise<Dinov2CasesResponse> {
+  const response = await fetch("/api/faultforge/dinov2/cases");
+
+  if (!response.ok) {
+    throw new Error(
+      `DINOv2 Cases API error: HTTP ${response.status}`
+    );
+  }
+
+  return response.json() as Promise<Dinov2CasesResponse>;
+}

@@ -206,3 +206,67 @@ def get_inspection_heatmap(image_path: str):
         )
 
     return FileResponse(file_path, media_type="image/png")
+
+@router.get("/dinov2/cases")
+def get_dinov2_cases():
+    evaluation = read_report("dinov2_evaluation.json")
+    analysis = read_report("dinov2_failures.json")
+
+    if evaluation.get("model") != "Meta DINOv2 ViT-S/14":
+        raise HTTPException(
+            status_code=409,
+            detail="Unexpected evaluation model",
+        )
+
+    failures = {
+        item["sample_id"]: item
+        for item in analysis["failures"]
+    }
+
+    cases = []
+
+    for item in evaluation["predictions"]:
+        sample_id = item["sample_id"]
+        actual = bool(item["actual_defect"])
+        predicted = bool(item["predicted_defect"])
+
+        if actual and not predicted:
+            status = "missed"
+        elif not actual and predicted:
+            status = "false_alarm"
+        elif actual and predicted:
+            status = "detected"
+        else:
+            status = "correct_normal"
+
+        cases.append({
+            "sample_id": sample_id,
+            "category": sample_id.split("/")[1],
+            "actual_defect": actual,
+            "status": status,
+            "prediction": {
+                "predicted_defect": predicted,
+                "anomaly_score": item["anomaly_score"],
+            },
+            "prediction_changes": item["changed_predictions"],
+            "failure_type": (
+                failures[sample_id]["failure_type"]
+                if sample_id in failures
+                else None
+            ),
+        })
+
+    return {
+        "model": evaluation["model"],
+        "evaluation_type": "exploratory",
+        "independent_validation": False,
+        "metrics": {
+            "accuracy": evaluation["accuracy"],
+            "precision": evaluation["precision"],
+            "recall": evaluation["recall"],
+            "f1_score": evaluation["f1_score"],
+        },
+        "total_cases": len(cases),
+        "total_failures": analysis["total_failures"],
+        "cases": cases,
+    }
