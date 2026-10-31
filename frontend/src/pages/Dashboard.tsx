@@ -1,10 +1,12 @@
 
+import { useEffect, useState } from "react";
+
 import {
   Activity,
   ShieldCheck,
   AlertTriangle,
   CheckCircle2,
-  ArrowUpRight
+  LoaderCircle,
 } from "lucide-react";
 
 import {
@@ -15,86 +17,167 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  Legend
+  Legend,
 } from "recharts";
 
 import MetricCard from "../components/MetricCard";
-import type { FaultForgeReport } from "../services/api";
-import { toPercent } from "../services/api";
 
-interface Props {
-  report: FaultForgeReport;
+import {
+  getDinov2Verification,
+  getDinov2Cases,
+} from "../services/api";
+
+import type {
+  Dinov2VerificationResult,
+  Dinov2CasesResponse,
+} from "../services/api";
+
+function percent(value: number): string {
+  return `${(value * 100).toFixed(2)}%`;
 }
 
-export default function Dashboard({ report }: Props) {
-  const {
-    baseline,
-    candidate,
-    failure_analysis,
-    verification
-  } = report;
+function displayName(value: string): string {
+  return value.replaceAll("_", " ");
+}
 
-  const improvement =
-    (candidate.defect_recall - baseline.defect_recall) * 100;
+export default function Dashboard() {
+  const [verification, setVerification] =
+    useState<Dinov2VerificationResult | null>(null);
+
+  const [casesData, setCasesData] =
+    useState<Dinov2CasesResponse | null>(null);
+
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+
+    Promise.all([
+      getDinov2Verification(),
+      getDinov2Cases(),
+    ])
+      .then(([gate, cases]) => {
+        if (!active) return;
+        setVerification(gate);
+        setCasesData(cases);
+      })
+      .catch((err) => {
+        if (!active) return;
+        setError(
+          err instanceof Error ? err.message : String(err)
+        );
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex items-center gap-3 p-8 text-slate-300">
+        <LoaderCircle
+          size={20}
+          className="animate-spin text-violet-400"
+        />
+        Loading Meta DINOv2 dashboard...
+      </div>
+    );
+  }
+
+  if (!verification || !casesData) {
+    return (
+      <div className="rounded-2xl border border-rose-500/20 bg-rose-500/10 p-6">
+        <h2 className="font-semibold text-rose-300">
+          DINOv2 Dashboard Unavailable
+        </h2>
+        <p className="mt-2 text-sm text-slate-300">
+          {error || "The required reports are unavailable."}
+        </p>
+      </div>
+    );
+  }
+
+  const baseline = verification.baseline;
+  const candidate = verification.candidate_metrics;
 
   const chartData = [
     {
-      name: "Global",
-      recall: +(baseline.defect_recall * 100).toFixed(2),
-      falseAlarms: +(baseline.false_alarm_rate * 100).toFixed(2)
+      name: "Baseline",
+      recall: +(baseline.recall * 100).toFixed(2),
+      falseAlarms: +(baseline.false_alarm_rate * 100).toFixed(2),
     },
     {
-      name: "Patch-Based",
-      recall: +(candidate.defect_recall * 100).toFixed(2),
-      falseAlarms: +(candidate.false_alarm_rate * 100).toFixed(2)
-    }
+      name: "Blue Agent",
+      recall: +(candidate.recall * 100).toFixed(2),
+      falseAlarms: +(candidate.false_alarm_rate * 100).toFixed(2),
+    },
   ];
+
+  const decisionRejected =
+    verification.decision.includes("REJECT");
+
+  const missedCases = casesData.cases.filter(
+    (item) => item.status === "missed"
+  );
+
+  const falseAlarmCases = casesData.cases.filter(
+    (item) => item.status === "false_alarm"
+  );
 
   return (
     <div className="space-y-8">
       <div>
         <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-violet-500/20 bg-violet-500/10 px-3 py-1 text-xs text-violet-300">
           <Activity size={13} />
-          INSPECTION OVERVIEW
+          META DINOv2 INSPECTION
         </div>
 
         <h1 className="text-3xl font-bold tracking-tight text-white">
           Reliability Dashboard
         </h1>
 
-        <p className="mt-2 text-slate-400">
-          {report.dataset} · Exploratory evaluation
+        <p className="mt-2 text-sm text-slate-400">
+          Meta DINOv2 ViT-S/14 · Experimental anomaly detection
+        </p>
+
+        <p className="mt-1 text-xs text-amber-300">
+          Exploratory evaluation — not independent validation
         </p>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard
-          label="Baseline Recall"
-          value={toPercent(baseline.defect_recall)}
-          description="Global ResNet18"
+          label="DINOv2 Accuracy"
+          value={percent(baseline.accuracy)}
+          description="Global embedding baseline"
           icon={<Activity size={20} />}
         />
 
         <MetricCard
-          label="Candidate Recall"
-          value={toPercent(candidate.defect_recall)}
-          description="Patch-Based Inspector"
+          label="Blue Agent Accuracy"
+          value={percent(candidate.accuracy)}
+          description="Experimental majority voting"
           icon={<ShieldCheck size={20} />}
           accent="green"
         />
 
         <MetricCard
-          label="Recovered Defects"
-          value={String(failure_analysis.recovered_defects.length)}
-          description="Previously missed defects detected"
+          label="Detected Defects"
+          value={String(baseline.tp)}
+          description="Correct baseline detections"
           icon={<CheckCircle2 size={20} />}
           accent="blue"
         />
 
         <MetricCard
-          label="Remaining Misses"
-          value={String(candidate.missed_defects)}
-          description="Defects still not detected"
+          label="Missed Defects"
+          value={String(baseline.fn)}
+          description="Baseline false negatives"
           icon={<AlertTriangle size={20} />}
           accent="red"
         />
@@ -102,22 +185,13 @@ export default function Dashboard({ report }: Props) {
 
       <div className="grid gap-5 xl:grid-cols-3">
         <section className="rounded-2xl border border-slate-800 bg-[#131c2c] p-6 xl:col-span-2">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h2 className="text-lg font-semibold text-white">
-                Model Performance
-              </h2>
-              <p className="mt-1 text-sm text-slate-400">
-                Recall and false alarm rate (%)
-              </p>
-            </div>
+          <h2 className="text-lg font-semibold text-white">
+            Model Performance
+          </h2>
 
-            <div className="flex items-center gap-2 rounded-lg bg-emerald-500/10 px-3 py-2 text-sm text-emerald-400">
-              <ArrowUpRight size={16} />
-              {improvement >= 0 ? "+" : ""}
-              {improvement.toFixed(2)} pp recall
-            </div>
-          </div>
+          <p className="mt-1 text-sm text-slate-400">
+            DINOv2 baseline vs. experimental Blue Agent (%)
+          </p>
 
           <div className="mt-7 h-72 w-full">
             <ResponsiveContainer width="100%" height="100%">
@@ -126,33 +200,39 @@ export default function Dashboard({ report }: Props) {
                   stroke="#273449"
                   vertical={false}
                 />
+
                 <XAxis
                   dataKey="name"
                   stroke="#94a3b8"
                   tick={{ fontSize: 12 }}
                 />
+
                 <YAxis
                   domain={[0, 100]}
                   stroke="#94a3b8"
                   tick={{ fontSize: 12 }}
                 />
+
                 <Tooltip
                   contentStyle={{
                     backgroundColor: "#1e293b",
                     border: "1px solid #334155",
-                    borderRadius: 10
+                    borderRadius: 10,
                   }}
                 />
+
                 <Legend />
+
                 <Bar
                   dataKey="recall"
                   name="Recall (%)"
                   fill="#9585ff"
                   radius={[6, 6, 0, 0]}
                 />
+
                 <Bar
                   dataKey="falseAlarms"
-                  name="False alarms (%)"
+                  name="False Alarm Rate (%)"
                   fill="#fb7185"
                   radius={[6, 6, 0, 0]}
                 />
@@ -165,22 +245,28 @@ export default function Dashboard({ report }: Props) {
           <h2 className="text-lg font-semibold text-white">
             Verification Gate
           </h2>
+
           <p className="mt-1 text-sm text-slate-400">
-            Automated regression checks
+            DINOv2 strategy regression checks
           </p>
 
-          <div className={`mt-5 rounded-xl border p-3 text-sm font-semibold ${
-            verification.decision === "PROMISING_CANDIDATE"
-              ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
-              : "border-rose-500/20 bg-rose-500/10 text-rose-400"
-          }`}>
-            {verification.decision}
+          <div
+            className={`mt-5 rounded-xl border p-3 text-sm font-semibold ${
+              decisionRejected
+                ? "border-rose-500/20 bg-rose-500/10 text-rose-400"
+                : "border-amber-500/20 bg-amber-500/10 text-amber-300"
+            }`}
+          >
+            {displayName(verification.decision)}
           </div>
 
           <div className="mt-6 space-y-4">
             {Object.entries(verification.checks).map(
               ([check, passed]) => (
-                <div key={check} className="flex items-center gap-3">
+                <div
+                  key={check}
+                  className="flex items-start gap-3"
+                >
                   {passed ? (
                     <CheckCircle2
                       size={18}
@@ -192,8 +278,9 @@ export default function Dashboard({ report }: Props) {
                       className="shrink-0 text-rose-400"
                     />
                   )}
+
                   <span className="text-sm text-slate-300">
-                    {check.replaceAll("_", " ")}
+                    {displayName(check)}
                   </span>
                 </div>
               )
@@ -201,9 +288,21 @@ export default function Dashboard({ report }: Props) {
           </div>
 
           <div className="mt-6 border-t border-slate-800 pt-4 text-xs leading-6 text-slate-500">
-            Independent validation: No
-            <br />
-            Production approved: No
+            <p>
+              Images evaluated: {verification.samples_evaluated}
+            </p>
+            <p>
+              Independent validation:{" "}
+              {verification.independent_validation
+                ? "Yes"
+                : "No"}
+            </p>
+            <p>
+              Production approved:{" "}
+              {verification.production_approved
+                ? "Yes"
+                : "No"}
+            </p>
           </div>
         </section>
       </div>
@@ -211,50 +310,69 @@ export default function Dashboard({ report }: Props) {
       <div className="grid gap-5 lg:grid-cols-2">
         <section className="rounded-2xl border border-slate-800 bg-[#131c2c] p-6">
           <h2 className="font-semibold text-white">
-            Recovered Defects
+            Missed Defects
           </h2>
+
           <p className="mt-1 text-sm text-slate-400">
-            Missed by Global, detected by Patch-Based
+            Defective images not detected by DINOv2 baseline
           </p>
 
           <div className="mt-5 space-y-2">
-            {failure_analysis.recovered_defects.map((item) => (
+            {missedCases.map((item) => (
               <div
-                key={item}
+                key={item.sample_id}
                 className="flex items-center gap-3 rounded-lg bg-slate-800/50 p-3 text-sm"
               >
-                <CheckCircle2 size={16} className="text-emerald-400" />
+                <AlertTriangle
+                  size={16}
+                  className="shrink-0 text-rose-400"
+                />
+
                 <span className="break-all text-slate-300">
-                  {item}
+                  {item.sample_id}
                 </span>
               </div>
             ))}
+
+            {missedCases.length === 0 && (
+              <p className="text-sm text-slate-400">
+                No missed defects in the loaded report.
+              </p>
+            )}
           </div>
         </section>
 
         <section className="rounded-2xl border border-slate-800 bg-[#131c2c] p-6">
           <h2 className="font-semibold text-white">
-            Remaining Failures
+            False Alarms
           </h2>
+
           <p className="mt-1 text-sm text-slate-400">
-            Defects requiring further investigation
+            Normal images incorrectly flagged by DINOv2 baseline
           </p>
 
           <div className="mt-5 space-y-2">
-            {[
-              ...failure_analysis.still_missed_defects,
-              ...failure_analysis.new_missed_defects
-            ].map((item) => (
+            {falseAlarmCases.map((item) => (
               <div
-                key={item}
+                key={item.sample_id}
                 className="flex items-center gap-3 rounded-lg bg-slate-800/50 p-3 text-sm"
               >
-                <AlertTriangle size={16} className="text-rose-400" />
+                <AlertTriangle
+                  size={16}
+                  className="shrink-0 text-amber-400"
+                />
+
                 <span className="break-all text-slate-300">
-                  {item}
+                  {item.sample_id}
                 </span>
               </div>
             ))}
+
+            {falseAlarmCases.length === 0 && (
+              <p className="text-sm text-slate-400">
+                No false alarms in the loaded report.
+              </p>
+            )}
           </div>
         </section>
       </div>
