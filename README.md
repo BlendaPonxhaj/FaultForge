@@ -192,7 +192,7 @@ The repository does not yet include a fully pinned Python dependency file. Some 
 ### 3. Prepare the dataset
 
 The current experiments use the **MVTec AD Bottle** dataset.
-
+We use the MVTec AD Bottle dataset for normal-reference calibration, anomaly detection evaluation, failure analysis, and robustness testing. FaultForge's reliability-testing workflow and verification logic are built on top of Meta DINOv2 and evaluated using this dataset.
 The expected local structure is:
 
 ```text
