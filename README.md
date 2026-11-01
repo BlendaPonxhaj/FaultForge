@@ -9,6 +9,24 @@ Built for the **Meta Global AI Developer Hackathon 2026**.
 **Tech stack:** Meta DINOv2 · PyTorch · FastAPI · React · TypeScript · Tailwind CSS
 
 ---
+## Meta Open Models
+
+FaultForge uses **Meta DINOv2 (ViT-S/14)**, an open-weight computer vision model developed by Meta AI Research.
+
+We use DINOv2 to extract image embeddings and build an anomaly detection baseline using normal reference images.
+
+On top of DINOv2, we built:
+
+- **Failure Explorer:** Visualizes model predictions, missed defects, and anomaly heatmaps.
+- **Red Agent:** Tests prediction stability under controlled brightness and contrast changes.
+- **Blue Agent:** Evaluates an experimental multi-view majority-voting strategy.
+- **Verification Gate:** Compares the baseline and proposed strategy, including accuracy, missed defects, and false alarms.
+
+**Model license:** Apache License 2.0.
+
+**Original model:** https://github.com/facebookresearch/dinov2
+
+FaultForge uses DINOv2 locally through PyTorch without relying on Meta's Model API.
 
 ## Why FaultForge?
 
