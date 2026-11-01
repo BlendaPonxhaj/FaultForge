@@ -119,7 +119,7 @@ For each image, we show its ground-truth label, predicted label, anomaly score, 
 
 The heatmap helps visualize relative spatial differences, but it should not be treated as a validated defect-segmentation mask.
 
-![FaultForge Failure Explorer](docs/screenshots/failureexplorer.png)
+![FaultForge Failure Explorer](docs/screenshots/failureeexplorer.png)
 ### Agent Lab
 
 Run Red Agent and Blue Agent on a selected image and compare the results.
