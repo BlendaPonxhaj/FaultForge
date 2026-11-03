@@ -305,9 +305,25 @@ There are several limitations worth being clear about:
 - The current heatmaps are visual explanations of patch distances, not validated segmentation masks.
 - Local dataset files and generated experiment results are required to reproduce the demo.
 
-**Dataset licensing:** Our experiments use the MVTec AD Bottle dataset, provided by MVTec Software GmbH and distributed under the CC BY-NC-SA 4.0 license.
+### Dataset Licensing & Citations
 
-Dataset source: [MVTec Anomaly Detection Dataset](https://www.mvtec.com/company/research/datasets/mvtec-ad)
+FaultForge uses the **MVTec AD Bottle dataset**, developed by MVTec Software GmbH, for anomaly detection, robustness testing, and model reliability evaluation.
+
+The dataset is distributed under the **Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0)** license.
+
+We have received confirmation from the MVTec research team permitting the use of this dataset for our hackathon project, as described in our request.
+
+The dataset is used for research and evaluation purposes. Original dataset images are not redistributed through this repository.
+
+**Dataset source:** [MVTec Anomaly Detection Dataset](https://www.mvtec.com/company/research/datasets/mvtec-ad)
+
+**License:** [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/)
+
+**References:**
+
+1. Bergmann, P., Batzner, K., Fauser, M., Sattlegger, D., & Steger, C. (2021). *The MVTec Anomaly Detection Dataset: A Comprehensive Real-World Dataset for Unsupervised Anomaly Detection.* International Journal of Computer Vision, 129(4), 1038–1059. https://doi.org/10.1007/s11263-020-01400-4
+
+2. Bergmann, P., Fauser, M., Sattlegger, D., & Steger, C. (2019). *MVTec AD — A Comprehensive Real-World Dataset for Unsupervised Anomaly Detection.* Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR), 9584–9592. https://doi.org/10.1109/CVPR.2019.00982
 
 ## What's next?
 
